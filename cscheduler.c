@@ -1,4 +1,6 @@
 #include "cscheduler.h"
+#include "include/circular_queue.h"
+#include <stdio.h>
 
 // 10ms in nsec
 #define INTERVAL 10000000
@@ -12,24 +14,43 @@
 static ucontext_t uctx_main;
 node *process_queue;
 
-sem_t empty, taken;
-sem_t mutex;
+// implement a semaphore
+
+sem_t *sem_init(unsigned int value) {
+  sem_t *sem = (sem_t *)malloc(sizeof(sem_t));
+  sem->value = value;
+  sem->blocked_processes = NULL;
+  return sem;
+}
+
+void sem_wait(sem_t *sem) {
+  sem->value--;
+  if (sem->value < 0) {
+    sem->blocked_processes =
+        enqueue(sem->blocked_processes, peek(process_queue));
+  }
+}
+
+void sem_post(sem_t *sem) {
+  sem->value++;
+  if (sem->value <= 0) {
+    if (sem->blocked_processes == NULL)
+      return;
+    process_queue = enqueue(process_queue, peek(sem->blocked_processes));
+    sem->blocked_processes = dequeue(sem->blocked_processes);
+  }
+}
+
+void sem_destroy(sem_t *sem) { free(sem); }
 
 void timer_handler(int signum) {
-  sem_wait(&empty);
-  sem_wait(&mutex);
   process_queue = process_queue->next;
   if (swapcontext(peek(process_queue->prev), peek(process_queue))) {
     handle_error("swapcontext");
   }
-  sem_post(&mutex);
-  sem_post(&empty);
 }
 
 void init_library() {
-  sem_init(&mutex, 1, 1);
-  sem_init(&empty, 1, 1);
-  sem_init(&taken, 0, 1);
   getcontext(&uctx_main);
   process_queue = enqueue(NULL, &uctx_main);
 
@@ -78,19 +99,11 @@ int create_task(void *(start_routine)) {
   new_context->uc_stack.ss_sp = calloc(1, MINSIGSTKSZ);
   new_context->uc_stack.ss_size = MINSIGSTKSZ;
   new_context->uc_stack.ss_flags = 0;
-  
-  sem_wait(&taken);
-  sem_wait(&mutex);
+
   new_context->uc_link =
       is_empty(process_queue) ? &uctx_main : peek(process_queue);
   makecontext(new_context, start_routine, 0);
   process_queue = enqueue(process_queue, new_context);
-  sem_post(&mutex);
-
-  // add extra 1 to the value of the semaphore so that this scales with input
-  // functions
-  sem_post(&mutex);
-  sem_post(&empty);
 
   return 0;
 }
