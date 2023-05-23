@@ -7,14 +7,12 @@ void f1() {
   while (1) {
     sem_wait(sem);
     printf("-");
-    sleep(1);
     sem_post(sem);
   }
 }
 void f2() {
   while (1) {
     printf("+");
-    sleep(1);
   }
 }
 
@@ -22,7 +20,6 @@ void f3() {
   while (1) {
     sem_wait(sem);
     printf("*");
-    sleep(1);
     sem_post(sem);
   }
 }
@@ -30,7 +27,6 @@ void f3() {
 void f4() {
   while (1) {
     printf("/");
-    sleep(1);
   }
 }
 

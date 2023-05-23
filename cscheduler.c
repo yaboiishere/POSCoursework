@@ -2,8 +2,8 @@
 #include "include/circular_queue.h"
 #include <stdio.h>
 
-// 10ms in nsec
-#define INTERVAL 10000000
+// 10ms in nsec + 0
+#define INTERVAL 100000000
 
 #define handle_error(msg)                                                      \
   do {                                                                         \
@@ -26,8 +26,14 @@ sem_t *sem_init(unsigned int value) {
 void sem_wait(sem_t *sem) {
   sem->value--;
   if (sem->value < 0) {
+    if(peek(process_queue) == &uctx_main && peek(process_queue->next) == &uctx_main) 
+      return;
+    if (peek(process_queue) == &uctx_main)
+      process_queue = process_queue->prev;
+
     sem->blocked_processes =
         enqueue(sem->blocked_processes, peek(process_queue));
+        process_queue = dequeue(process_queue);
   }
 }
 
@@ -44,6 +50,10 @@ void sem_post(sem_t *sem) {
 void sem_destroy(sem_t *sem) { free(sem); }
 
 void timer_handler(int signum) {
+  if (process_queue == NULL)
+    return;
+  if (process_queue->next == process_queue)
+    return;
   process_queue = process_queue->next;
   if (swapcontext(peek(process_queue->prev), peek(process_queue))) {
     handle_error("swapcontext");
